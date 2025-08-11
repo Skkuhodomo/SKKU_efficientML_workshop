@@ -6,13 +6,15 @@ Created by: Seokho Han
 import torch
 import torch.nn as nn
 from Quantizer import Quantizer
-from CombinedCompressor import CombinedCompressor
+from CombinedCompressor import CombinedCompressor, start_global_progress, close_global_progress
 from utils import find_layers_resnet
 
 @torch.no_grad()
 
 def resnet_sequential(model, calib_loader, device, layer_configs, params):
     layers = find_layers_resnet(model)
+    # 글로벌 진행바를 레이어 개수 기준으로 초기화 (Kaggle에서 셀 재실행 시에도 매번 초기화)
+    gbar = start_global_progress(total_layers=len(layers), desc="Pruning All Layers")
 
     for idx, (name, module) in enumerate(layers):
         # 설정이 없으면 default 값 사용
@@ -20,11 +22,12 @@ def resnet_sequential(model, calib_loader, device, layer_configs, params):
         sparsity = config.get('sparsity', params["DEFAULT_SPARSITY"])
         wbits = config.get('wbits', params["DEFAULT_WBITS"])
 
-        print(f"[{idx+1}/{len(layers)}] Processing {name} | Sparsity: {sparsity}, W_Bits: {wbits}")
+        gbar.note(f"[{idx+1}/{len(layers)}] Processing {name} | Sparsity: {sparsity}, W_Bits: {wbits}")
 
         # 압축을 수행할 필요가 없는 경우 (희소성 0, 16비트 양자화)
         if sparsity == 0 and wbits >= 16:
-            print(f"  -> Skipping compression for {name}.")
+            gbar.note(f"  -> Skipping compression for {name}.")
+            gbar.update(1)
             continue
 
         module.to(device)
@@ -60,3 +63,5 @@ def resnet_sequential(model, calib_loader, device, layer_configs, params):
         cache.clear()
         module.cpu()
         torch.cuda.empty_cache()
+    # 전체 완료 후 글로벌 바 닫기 (다음 셀 재실행 시 ASCII 및 바 재출력 보장)
+    close_global_progress()

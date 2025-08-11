@@ -30,9 +30,9 @@ _GLOBAL_PBAR_LOCK = Lock()
 _ASCII_PRINTED = False
 
 
-def _print_ascii_once():
+def _print_ascii_once(force: bool = False):
     global _ASCII_PRINTED
-    if _ASCII_PRINTED:
+    if _ASCII_PRINTED and not force:
         return
     try:
         ascii_path = Path(__file__).with_name("ascii-art.txt")
@@ -114,11 +114,20 @@ def start_global_progress(total_layers: int, desc: str | None = None):
 
     Call this once before running pruning/quantization across multiple layers.
     """
-    gbar = _get_global_progress()
-    gbar.reset_total(total_layers)
-    if desc:
-        gbar.set_description(desc)
-    return gbar
+    global _GLOBAL_PBAR
+    with _GLOBAL_PBAR_LOCK:
+        # Close previous bar if any, so we cleanly recreate for a new run
+        if _GLOBAL_PBAR is not None:
+            _GLOBAL_PBAR.close()
+            _GLOBAL_PBAR = None
+        # Force print ASCII at the start of each run
+        _print_ascii_once(force=True)
+        # Create a fresh global bar
+        _GLOBAL_PBAR = _GlobalProgress()
+        _GLOBAL_PBAR.reset_total(total_layers)
+        if desc:
+            _GLOBAL_PBAR.set_description(desc)
+        return _GLOBAL_PBAR
 
 
 class CombinedCompressor:
