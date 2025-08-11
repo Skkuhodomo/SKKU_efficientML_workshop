@@ -84,6 +84,13 @@ class _GlobalProgress:
     def close(self):
         self.pbar.close()
 
+    def reset_total(self, total: int):
+        # Reset the bar to represent total number of layers
+        total = max(int(total), 0)
+        self.pbar.total = total
+        self.pbar.n = 0
+        self.pbar.refresh()
+
 
 def _get_global_progress() -> _GlobalProgress:
     global _GLOBAL_PBAR
@@ -100,6 +107,18 @@ def close_global_progress():
         if _GLOBAL_PBAR is not None:
             _GLOBAL_PBAR.close()
             _GLOBAL_PBAR = None
+
+
+def start_global_progress(total_layers: int, desc: str | None = None):
+    """Initialize the single global progress bar with the total number of layers.
+
+    Call this once before running pruning/quantization across multiple layers.
+    """
+    gbar = _get_global_progress()
+    gbar.reset_total(total_layers)
+    if desc:
+        gbar.set_description(desc)
+    return gbar
 
 
 class CombinedCompressor:
@@ -185,10 +204,8 @@ class CombinedCompressor:
 
         mask = None
 
-        # --- Global tqdm: one bar for the entire process ---
-        total_blocks = (self.columns + blocksize - 1) // blocksize
+        # --- Global tqdm: layer-based overall progress (0..#layers) ---
         gbar = _get_global_progress()
-        gbar.add_total(total_blocks)
         layer_desc = f"{self.layer.__class__.__name__}({self.rows}x{self.columns})"
         gbar.set_description(f"Pruning {layer_desc}")
         gbar.note(
@@ -260,14 +277,15 @@ class CombinedCompressor:
                 dbg_loss = torch.sum(Losses).item()
                 gbar.note(f"[DEBUG] layer_err={dbg_err:.6e} | cum_loss={dbg_loss:.6e}")
 
-            # update single global progress bar per processed block
-            gbar.update(1)
+            # single global bar is layer-based; do not advance per-block
 
         torch.cuda.synchronize()
         total_time = time.time() - tick
         total_err = torch.sum(Losses).item()
         # Keep the global bar and print layer-wise summary beneath it
         gbar.note(f"[Layer Done] {layer_desc} | time {total_time:.2f}s | err {total_err:.6e}")
+        # advance by one completed layer
+        gbar.update(1)
 
         if isinstance(self.layer, transformers.Conv1D):
             W = W.t()
