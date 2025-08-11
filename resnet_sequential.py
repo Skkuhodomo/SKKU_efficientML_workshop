@@ -22,8 +22,7 @@ def resnet_sequential(model, calib_loader, device, layer_configs, params):
         sparsity = config.get('sparsity', params["DEFAULT_SPARSITY"])
         wbits = config.get('wbits', params["DEFAULT_WBITS"])
 
-        # tqdm의 desc를 레이어명으로 갱신 (즉시 반영되도록)
-        gbar.set_description(f"[{idx+1}/{len(layers)}] {name}")
+        # 레이어명은 tqdm desc에 띄우지 않고, 로그로만 출력
         gbar.note(f"[{idx+1}/{len(layers)}] Processing {name} | Sparsity: {sparsity}, W_Bits: {wbits}")
 
         # 압축을 수행할 필요가 없는 경우 (희소성 0, 16비트 양자화)
