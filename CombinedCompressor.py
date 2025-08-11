@@ -16,6 +16,8 @@ import torch.nn as nn
 import transformers
 from Quantizer import *
 from tqdm.auto import tqdm
+from pathlib import Path
+from threading import Lock
 
 DEBUG = False
 
@@ -23,38 +25,81 @@ torch.backends.cuda.matmul.allow_tf32 = False
 torch.backends.cudnn.allow_tf32 = False
 
 
-class _KaggleLogger:
-    """Lightweight pretty logger for Kaggle notebooks (output cell only)."""
-    def __init__(self, total_blocks: int, columns: int, blocksize: int):
-        self.total_blocks = total_blocks
-        self.columns = columns
-        self.blocksize = blocksize
-        self.pbar = tqdm(total=total_blocks, bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]")
-        self._last_block_start_time = None
-        self._loss_running = 0.0
+_GLOBAL_PBAR = None
+_GLOBAL_PBAR_LOCK = Lock()
+_ASCII_PRINTED = False
 
-    def start_block(self, i1: int, i2: int):
-        self._last_block_start_time = time.time()
-        self.pbar.set_description_str(f"Pruning blocks ({i1}:{i2})")
 
-    def end_block(self, losses_added: float, mask_ratio: float | None = None):
-        block_time = time.time() - self._last_block_start_time if self._last_block_start_time else 0.0
-        self._loss_running += float(losses_added)
-        postfix = {
-            "Δt(s)": f"{block_time:.2f}",
-            "ΣLoss": f"{self._loss_running:.3e}",
-        }
-        if mask_ratio is not None:
-            postfix["mask%"] = f"{100.0 * mask_ratio:.1f}"
+def _print_ascii_once():
+    global _ASCII_PRINTED
+    if _ASCII_PRINTED:
+        return
+    try:
+        ascii_path = Path(__file__).with_name("ascii-art.txt")
+        if ascii_path.exists():
+            art = ascii_path.read_text(encoding="utf-8", errors="ignore").rstrip("\n")
+            # Print above the progress bar so it stays at the top
+            print(art)
+    except Exception:
+        # If ascii cannot be loaded, silently continue
+        pass
+    _ASCII_PRINTED = True
+
+
+class _GlobalProgress:
+    """A single global tqdm progress bar shared across the whole compression run.
+
+    - The total is dynamic. Each layer can extend the total by calling add_total().
+    - Messages are printed below the bar via tqdm.write().
+    """
+
+    def __init__(self):
+        _print_ascii_once()
+        self.pbar = tqdm(
+            total=0,
+            bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
+            leave=True,
+        )
+
+    def add_total(self, n: int):
+        if n <= 0:
+            return
+        # Dynamically expand total
+        new_total = (self.pbar.total or 0) + int(n)
+        self.pbar.total = new_total
+        self.pbar.refresh()
+
+    def set_description(self, text: str):
+        self.pbar.set_description_str(text)
+
+    def set_postfix(self, postfix: dict):
         self.pbar.set_postfix(postfix, refresh=True)
-        self.pbar.update(1)
+
+    def update(self, n: int = 1):
+        self.pbar.update(n)
 
     def note(self, msg: str):
         tqdm.write(msg)
 
-    def done(self, total_time: float, total_loss: float):
+    def close(self):
         self.pbar.close()
-        tqdm.write(f"[Done] time {total_time:.2f}s | total error {total_loss:.6e}")
+
+
+def _get_global_progress() -> _GlobalProgress:
+    global _GLOBAL_PBAR
+    with _GLOBAL_PBAR_LOCK:
+        if _GLOBAL_PBAR is None:
+            _GLOBAL_PBAR = _GlobalProgress()
+        return _GLOBAL_PBAR
+
+
+def close_global_progress():
+    """Optionally close the global progress bar when the entire run is finished."""
+    global _GLOBAL_PBAR
+    with _GLOBAL_PBAR_LOCK:
+        if _GLOBAL_PBAR is not None:
+            _GLOBAL_PBAR.close()
+            _GLOBAL_PBAR = None
 
 
 class CombinedCompressor:
@@ -140,16 +185,22 @@ class CombinedCompressor:
 
         mask = None
 
-        # --- Kaggle-friendly logging setup ---
+        # --- Global tqdm: one bar for the entire process ---
         total_blocks = (self.columns + blocksize - 1) // blocksize
-        logger = _KaggleLogger(total_blocks=total_blocks, columns=self.columns, blocksize=blocksize)
-        logger.note(f"[Start] columns={self.columns}, rows={self.rows}, blocksize={blocksize}, "
-                    f"sparsity={sparsity:.3f}, prunen={prunen}, prunem={prunem}, percdamp={percdamp}")
+        gbar = _get_global_progress()
+        gbar.add_total(total_blocks)
+        layer_desc = f"{self.layer.__class__.__name__}({self.rows}x{self.columns})"
+        gbar.set_description(f"Pruning {layer_desc}")
+        gbar.note(
+            f"[Start] {layer_desc} | blocksize={blocksize}, sparsity={sparsity:.3f}, "
+            f"prunen={prunen}, prunem={prunem}, percdamp={percdamp}"
+        )
 
         for i1 in range(0, self.columns, blocksize):
             i2 = min(i1 + blocksize, self.columns)
             count = i2 - i1
-            logger.start_block(i1, i2)
+            # Keep single global bar; optionally update description for current window
+            gbar.set_description(f"Pruning {layer_desc} [{i1}:{i2}]")
 
             W1 = W[:, i1:i2].clone()
             Q1 = torch.zeros_like(W1)
@@ -157,7 +208,7 @@ class CombinedCompressor:
             Losses1 = torch.zeros_like(W1)
             Hinv1 = Hinv[i1:i2, i1:i2]
 
-            # Build/derive mask1 and log approximate mask ratio (for progress)
+            # Build/derive mask1; track approximate mask ratio for info if needed
             mask_ratio = None
             if prunen == 0:
                 if mask is not None:
@@ -207,16 +258,16 @@ class CombinedCompressor:
                 self.layer.weight.data[:, i2:] = W[:, i2:]
                 dbg_err = torch.sum((self.layer(self.inp1) - self.out1) ** 2).item()
                 dbg_loss = torch.sum(Losses).item()
-                logger.note(f"[DEBUG] layer_err={dbg_err:.6e} | cum_loss={dbg_loss:.6e}")
+                gbar.note(f"[DEBUG] layer_err={dbg_err:.6e} | cum_loss={dbg_loss:.6e}")
 
-            # update pretty progress for this block
-            logger.end_block(losses_added=float(torch.sum(block_loss).item()),
-                             mask_ratio=mask_ratio)
+            # update single global progress bar per processed block
+            gbar.update(1)
 
         torch.cuda.synchronize()
         total_time = time.time() - tick
         total_err = torch.sum(Losses).item()
-        logger.done(total_time=total_time, total_loss=total_err)
+        # Keep the global bar and print layer-wise summary beneath it
+        gbar.note(f"[Layer Done] {layer_desc} | time {total_time:.2f}s | err {total_err:.6e}")
 
         if isinstance(self.layer, transformers.Conv1D):
             W = W.t()
