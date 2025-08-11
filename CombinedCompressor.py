@@ -60,7 +60,7 @@ class _GlobalProgress:
             bar_format="{desc} {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
             leave=True,
             dynamic_ncols=False,
-            ncols=80,
+            ncols=400,
             position=0,
             mininterval=0.1,
         )
