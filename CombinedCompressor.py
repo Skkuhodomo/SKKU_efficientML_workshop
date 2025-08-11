@@ -57,8 +57,12 @@ class _GlobalProgress:
         _print_ascii_once()
         self.pbar = tqdm(
             total=0,
-            bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
+            bar_format="{desc} {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]",
             leave=True,
+            dynamic_ncols=False,
+            ncols=80,
+            position=0,
+            mininterval=0.1,
         )
 
     def add_total(self, n: int):
@@ -70,7 +74,8 @@ class _GlobalProgress:
         self.pbar.refresh()
 
     def set_description(self, text: str):
-        self.pbar.set_description_str(text)
+        # Force refresh so Jupyter/Kaggle display updates immediately
+        self.pbar.set_description_str(text, refresh=True)
 
     def set_postfix(self, postfix: dict):
         self.pbar.set_postfix(postfix, refresh=True)
@@ -216,7 +221,6 @@ class CombinedCompressor:
         # --- Global tqdm: layer-based overall progress (0..#layers) ---
         gbar = _get_global_progress()
         layer_desc = f"{self.layer.__class__.__name__}({self.rows}x{self.columns})"
-        gbar.set_description(f"Pruning {layer_desc}")
         gbar.note(
             f"[Start] {layer_desc} | blocksize={blocksize}, sparsity={sparsity:.3f}, "
             f"prunen={prunen}, prunem={prunem}, percdamp={percdamp}"
@@ -225,8 +229,7 @@ class CombinedCompressor:
         for i1 in range(0, self.columns, blocksize):
             i2 = min(i1 + blocksize, self.columns)
             count = i2 - i1
-            # Keep single global bar; optionally update description for current window
-            gbar.set_description(f"Pruning {layer_desc} [{i1}:{i2}]")
+            # Keep single global bar; description is controlled by caller
 
             W1 = W[:, i1:i2].clone()
             Q1 = torch.zeros_like(W1)
