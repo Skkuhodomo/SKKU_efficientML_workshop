@@ -15,7 +15,7 @@ def resnet_sequential(model, calib_loader, device, layer_configs, params):
     layers = find_layers_resnet(model)
     # 글로벌 진행바를 레이어 개수 기준으로 초기화 (Kaggle에서 셀 재실행 시에도 매번 초기화)
     gbar = start_global_progress(total_layers=len(layers), desc="Pruning All Layers")
-    nsamples   = params.get('nsamples', 1024)      # 없으면 1024
+    nsamples   = params.get('nsamples', 512)      # 없으면 1024
     percdamp   = params.get('percdamp', 0.01)      # 없으면 0.01
     prunen     = params.get('prunen', 0)           # 없으면 0
     prunem     = params.get('prunem', 0)           # 없으면 0
