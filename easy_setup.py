@@ -4,6 +4,7 @@ import gdown
 import torch
 import torch.nn as nn
 from utils import resnet18_cifar, get_device, set_seed, get_acc
+from resnet_sequential import resnet_sequential
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from utils import *  
