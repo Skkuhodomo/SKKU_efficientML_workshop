@@ -47,7 +47,7 @@ testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size, shuffle
     # -------------------------
 calibset = torch.utils.data.Subset(testset, list(range(nsamples)))
 calibloader = torch.utils.data.DataLoader(calibset, batch_size=1, shuffle=False, num_workers=4)
-print(f"Calibration Dataset Loaded | Length: {len(calibset)}")
+print(f"✅ Calibration Dataset Loaded | Length: {len(calibset)}")
 
 
     # -------------------------
