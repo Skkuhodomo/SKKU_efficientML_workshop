@@ -7,6 +7,7 @@ from utils import resnet18_cifar, get_device, set_seed, get_acc
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from utils import *  
+import numpy as np
 
     # -------------------------
     # 1) Checkpoint 다운로드
