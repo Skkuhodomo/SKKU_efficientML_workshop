@@ -8,6 +8,7 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from utils import *  
 import numpy as np
+from matplotlib import pyplot as plt
 
     # -------------------------
     # 1) Checkpoint 다운로드
