@@ -21,7 +21,9 @@ def resnet_sequential(model, calib_loader, device, layer_configs, params):
         config = layer_configs.get(name, {})
         sparsity = config.get('sparsity', params["DEFAULT_SPARSITY"])
         wbits = config.get('wbits', params["DEFAULT_WBITS"])
-
+        sym = config.get('sym', params["DEFAULT_SYM"])
+        perchannel = config.get('perchannel', params["DEFAULT_PERCHANNEL"])
+        
         # 레이어명은 tqdm desc에 띄우지 않고, 로그로만 출력
         gbar.note(f"[{idx+1}/{len(layers)}] Processing {name} | Sparsity: {sparsity}, W_Bits: {wbits}")
 
@@ -37,7 +39,7 @@ def resnet_sequential(model, calib_loader, device, layer_configs, params):
 
         if wbits < 16:
             gpt.quantizer = Quantizer()
-            gpt.quantizer.configure(bits=wbits, perchannel=True, sym=False, mse=False)
+            gpt.quantizer.configure(bits=wbits, perchannel=perchannel, sym=sym, mse=False)
 
         cache = {}
         def save_io(mod, inp, out):
