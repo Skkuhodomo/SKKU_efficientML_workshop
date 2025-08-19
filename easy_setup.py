@@ -51,7 +51,6 @@ def main():
     model.eval().to(device)
 
     print("✅ Pretrained Model Loaded")
-    print_all_module_names(model)
 
 
 if __name__ == "__main__":
