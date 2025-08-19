@@ -20,13 +20,14 @@ def resnet_sequential(model, calib_loader, device, layer_configs, params):
     prunen     = params.get('prunen', 0)           # 없으면 0
     prunem     = params.get('prunem', 0)           # 없으면 0
     blocksize  = params.get('blocksize', 128)      # 없으면 128
+    perchannel = params.get('perchannel', False)
+    sym = params.get('sym', False)
     for idx, (name, module) in enumerate(layers):
         # 설정이 없으면 default 값 사용
         config = layer_configs.get(name, {})
         sparsity = config.get('sparsity', params["DEFAULT_SPARSITY"])
         wbits = config.get('wbits', params["DEFAULT_WBITS"])
-        sym = config.get('sym', params["DEFAULT_SYM"])
-        perchannel = config.get('perchannel', params["DEFAULT_PERCHANNEL"])
+
         # params['namples'], params['prunen'], params['prunem'], params['percdamp'], params['blocksize'],
 
 
