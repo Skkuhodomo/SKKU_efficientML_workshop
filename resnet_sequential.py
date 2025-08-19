@@ -15,7 +15,11 @@ def resnet_sequential(model, calib_loader, device, layer_configs, params):
     layers = find_layers_resnet(model)
     # 글로벌 진행바를 레이어 개수 기준으로 초기화 (Kaggle에서 셀 재실행 시에도 매번 초기화)
     gbar = start_global_progress(total_layers=len(layers), desc="Pruning All Layers")
-
+    nsamples   = params.get('nsamples', 1024)      # 없으면 1024
+    percdamp   = params.get('percdamp', 0.01)      # 없으면 0.01
+    prunen     = params.get('prunen', 0)           # 없으면 0
+    prunem     = params.get('prunem', 0)           # 없으면 0
+    blocksize  = params.get('blocksize', 128)      # 없으면 128
     for idx, (name, module) in enumerate(layers):
         # 설정이 없으면 default 값 사용
         config = layer_configs.get(name, {})
@@ -23,7 +27,9 @@ def resnet_sequential(model, calib_loader, device, layer_configs, params):
         wbits = config.get('wbits', params["DEFAULT_WBITS"])
         sym = config.get('sym', params["DEFAULT_SYM"])
         perchannel = config.get('perchannel', params["DEFAULT_PERCHANNEL"])
-        
+        # params['namples'], params['prunen'], params['prunem'], params['percdamp'], params['blocksize'],
+
+
         # 레이어명은 tqdm desc에 띄우지 않고, 로그로만 출력
         gbar.note(f"[{idx+1}/{len(layers)}] Processing {name} | Sparsity: {sparsity}, W_Bits: {wbits}")
 
@@ -53,14 +59,14 @@ def resnet_sequential(model, calib_loader, device, layer_configs, params):
             model(img.to(device))
             if 'inp' in cache and 'out' in cache:
                 gpt.add_batch(cache['inp'], cache['out'])
-            if batch_idx >= params['nsamples'] - 1:
+            if batch_idx >= nsamples - 1:
                 break
 
         handle.remove()
 
         # 프루닝 및 양자화 실행
-        gpt.fasterprune(sparsity=sparsity, prunen=params['prunen'], prunem=params['prunem'],
-                       percdamp=params['percdamp'], blocksize=params['blocksize'])
+        gpt.fasterprune(sparsity=sparsity, prunen=prunen, prunem=prunem,
+                       percdamp=percdamp, blocksize=blocksize)
         gpt.free()
 
         cache.clear()
