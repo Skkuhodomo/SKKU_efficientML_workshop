@@ -27,6 +27,13 @@ def resnet_sequential(model, calib_loader, device, layer_configs, params):
         config = layer_configs.get(name, {})
         sparsity = config.get('sparsity', params["DEFAULT_SPARSITY"])
         wbits = config.get('wbits', params["DEFAULT_WBITS"])
+        nsamples = config.get('nsamples', nsamples)
+        percdamp = config.get('percdamp', percdamp)
+        prunen = config.get('prunen', prunen)
+        prunem = config.get('prunem', prunem)
+        blocksize = config.get('blocksize', blocksize)
+        perchannel = config.get('perchannel', perchannel)
+        sym = config.get('sym', sym)
 
         # params['namples'], params['prunen'], params['prunem'], params['percdamp'], params['blocksize'],
 
