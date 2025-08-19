@@ -45,10 +45,10 @@ def main():
     # -------------------------
     # 4) 모델 로드
     # -------------------------
-    model = resnet18_cifar(num_classes=100)
+    resnet18_cifar = resnet18_cifar(num_classes=100)
     checkpoint = torch.load(ckpt_path, map_location=device)
-    model.load_state_dict(checkpoint)
-    model.eval().to(device)
+    resnet18_cifar.load_state_dict(checkpoint)
+    resnet18_cifar.eval().to(device)
 
     print("✅ Pretrained Model Loaded")
 
